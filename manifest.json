@@ -1,0 +1,24 @@
+{
+  "name": "曼谷吃喝玩乐地图",
+  "short_name": "曼谷地图",
+  "description": "泰国曼谷旅游攻略 - 吃喝玩乐地图",
+  "start_url": "/bangkok-map/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%231a1a2e'/><text y='140' font-size='120' text-anchor='middle' x='96'>🇹🇭</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%231a1a2e'/><text y='360' font-size='320' text-anchor='middle' x='256'>🇹🇭</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

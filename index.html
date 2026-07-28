@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🇹🇭 曼谷吃喝玩乐地图</title>
+
+<!-- PWA -->
+<meta name="theme-color" content="#1a1a2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="曼谷地图">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🇹🇭</text></svg>">
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<style>
+/* ==================== RESET & BASE ==================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --drink:   #FF6B6B;
+  --eat:     #FFA726;
+  --rest:    #26C6DA;
+  --shop:    #AB47BC;
+  --massage: #66BB6A;
+  --airport: #42A5F5;
+  --hotel:   #EC407A;
+  --bg:     #1a1a2e;
+  --panel:  #16213e;
+  --text:   #e0e0e0;
+  --muted:  #888;
+  --accent: #0f3460;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans TC', sans-serif;
+  background: var(--bg);
+  height: 100vh; width: 100vw;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ==================== MAP ==================== */
+#map {
+  height: 100%; width: 100%;
+  z-index: 1;
+}
+
+/* ==================== TOP BAR ==================== */
+#topbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  background: linear-gradient(180deg, rgba(26,26,46,0.95) 60%, rgba(26,26,46,0) 100%);
+  padding: 12px 16px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+  pointer-events: none;
+}
+#topbar > * { pointer-events: auto; }
+#title {
+  color: #fff; font-size: 18px; font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+}
+#title span { font-size: 22px; }
+#placeCount {
+  color: var(--muted); font-size: 13px;
+  background: rgba(255,255,255,0.08); padding: 6px 12px; border-radius: 20px;
+}
+
+/* ==================== LEGEND / FILTER ==================== */
+#legend {
+  position: fixed; left: 10px; top: 50%; transform: translateY(-50%);
+  z-index: 1000;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.filter-btn {
+  width: 44px; height: 44px; border-radius: 50%; border: 2px solid transparent;
+  background: rgba(22,33,62,0.9); color: #fff; font-size: 18px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s; backdrop-filter: blur(10px);
+  position: relative;
+}
+.filter-btn:hover { transform: scale(1.08); }
+.filter-btn.active { border-color: #fff; box-shadow: 0 0 12px rgba(255,255,255,0.2); }
+.filter-btn.off { opacity: 0.3; filter: grayscale(1); }
+.filter-btn .dot {
+  position: absolute; bottom: 2px; right: 2px;
+  width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.5);
+}
+.dot-drink  { background: var(--drink); }
+.dot-eat    { background: var(--eat); }
+.dot-rest   { background: var(--rest); }
+.dot-shop   { background: var(--shop); }
+.dot-massage{ background: var(--massage); }
+.dot-airport{ background: var(--airport); }
+.dot-hotel  { background: var(--hotel); }
+
+@media (max-width: 768px) {
+  #legend {
+    left: auto; right: 4px; top: auto; bottom: 100px;
+    flex-direction: row; gap: 3px; flex-wrap: wrap; justify-content: flex-end;
+  }
+  .filter-btn { width: 32px; height: 32px; font-size: 14px; }
+}
+
+/* ==================== BOTTOM SHEET ==================== */
+#sheet {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
+  background: var(--panel); border-radius: 20px 20px 0 0;
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.4);
+  transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+  max-height: 52vh; overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+#sheet.hidden { transform: translateY(calc(100% - 48px)); }
+#sheet:not(.hidden) { transform: translateY(0); }
+
+#sheet-handle {
+  width: 36px; height: 5px; background: rgba(255,255,255,0.25);
+  border-radius: 3px; margin: 10px auto 4px;
+  cursor: pointer; flex-shrink: 0;
+}
+#sheet-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 20px 12px; flex-shrink: 0;
+}
+#sheet-header h3 { color: #fff; font-size: 16px; max-width: 70%; line-height: 1.3; }
+#sheet-category {
+  font-size: 12px; padding: 4px 10px; border-radius: 12px;
+  color: #fff; font-weight: 600; flex-shrink: 0;
+}
+#sheet-note { color: var(--muted); font-size: 13px; padding: 0 20px 10px; line-height: 1.5; }
+#sheet-votes {
+  display: flex; gap: 12px; padding: 0 20px 16px; align-items: center;
+}
+.vote-btn {
+  flex: 1; padding: 12px; border-radius: 14px; border: 2px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05); color: #fff; font-size: 15px;
+  cursor: pointer; transition: all 0.15s; display: flex; align-items: center;
+  justify-content: center; gap: 8px; font-weight: 600;
+}
+.vote-btn:active { transform: scale(0.96); }
+.vote-btn.up { border-color: rgba(102,187,106,0.5); }
+.vote-btn.down { border-color: rgba(255,107,107,0.5); }
+.vote-btn.up.voted { background: rgba(102,187,106,0.25); border-color: #66BB6A; }
+.vote-btn.down.voted { background: rgba(255,107,107,0.25); border-color: #FF6B6B; }
+.vote-btn .count { font-size: 18px; font-weight: 700; }
+#sheet-empty {
+  color: var(--muted); text-align: center; padding: 8px 20px 20px;
+  font-size: 14px; line-height: 1.6;
+}
+
+/* ==================== ADD PLACE BUTTON ==================== */
+#addBtn {
+  position: fixed; bottom: 24px; right: 16px; z-index: 1001;
+  width: 52px; height: 52px; border-radius: 50%; border: none;
+  background: var(--accent); color: #fff; font-size: 26px;
+  cursor: pointer; box-shadow: 0 4px 16px rgba(15,52,96,0.5);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s;
+}
+#addBtn:hover { transform: scale(1.06); }
+#addBtn:active { transform: scale(0.94); }
+
+/* ==================== MODAL ==================== */
+#modalOverlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+#modalOverlay.hidden { display: none; }
+#modal {
+  background: var(--panel); border-radius: 20px; padding: 24px;
+  width: 100%; max-width: 400px; max-height: 85vh; overflow-y: auto;
+  color: #fff; box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+#modal h3 { font-size: 18px; margin-bottom: 16px; }
+#modal label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+#modal input, #modal select, #modal textarea {
+  width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06); color: #fff; font-size: 15px;
+  font-family: inherit; outline: none; transition: border 0.2s;
+}
+#modal input:focus, #modal select:focus, #modal textarea:focus {
+  border-color: var(--accent);
+}
+#modal select option { background: var(--panel); color: #fff; }
+#modal textarea { resize: vertical; min-height: 60px; }
+#modal .btn-row { display: flex; gap: 10px; margin-top: 16px; }
+#modal button {
+  flex: 1; padding: 12px; border-radius: 12px; border: none;
+  font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+}
+#modal button:active { transform: scale(0.96); }
+#modal .btn-primary { background: var(--accent); color: #fff; }
+#modal .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; }
+#coords-display {
+  font-size: 12px; color: var(--muted); margin-top: 4px;
+}
+.pick-map-btn {
+  display: inline-block; margin-top: 8px; padding: 8px 16px;
+  border-radius: 8px; background: rgba(255,255,255,0.08); color: #fff;
+  font-size: 13px; cursor: pointer; border: 1px dashed rgba(255,255,255,0.2);
+  text-align: center; transition: all 0.15s; width: 100%;
+}
+.pick-map-btn:hover { background: rgba(255,255,255,0.14); }
+.pick-map-btn.active-pick { background: rgba(102,187,106,0.2); border-color: #66BB6A; }
+
+/* ==================== TOAST ==================== */
+#toast {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+  z-index: 3000; background: #66BB6A; color: #fff; padding: 10px 20px;
+  border-radius: 20px; font-size: 14px; font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  transition: all 0.3s; opacity: 0; pointer-events: none;
+}
+#toast.show { opacity: 1; }
+#toast.error { background: #FF6B6B; }
+
+/* ==================== PICKING STATUS BAR ==================== */
+#pickStatus {
+  position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+  z-index: 1500; background: rgba(102,187,106,0.9); color: #fff;
+  padding: 10px 20px; border-radius: 20px; font-size: 14px; font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3); pointer-events: none;
+  transition: all 0.3s; opacity: 0;
+}
+#pickStatus.show { opacity: 1; }
+
+/* ==================== SCROLLBAR ==================== */
+#sheet::-webkit-scrollbar, #modal::-webkit-scrollbar { width: 4px; }
+#sheet::-webkit-scrollbar-thumb, #modal::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15); border-radius: 2px;
+}
+
+/* ==================== LEAFLET OVERRIDES ==================== */
+.leaflet-popup-content-wrapper {
+  background: var(--panel) !important; color: #fff !important;
+  border-radius: 14px !important; padding: 4px !important;
+}
+.leaflet-popup-tip { background: var(--panel) !important; }
+.leaflet-popup-close-button { color: #fff !important; top: 8px !important; right: 10px !important; }
+.leaflet-container { background: #1a1a2e; }
+</style>
+</head>
+<body>
+
+<!-- ==================== MAP ==================== -->
+<div id="map">
+  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:18px;text-align:center;z-index:999;" id="mapStatus">
+    🗺️<br>地图加载中…
+  </div>
+</div>
+
+<!-- ==================== TOP BAR ==================== -->
+<div id="topbar">
+  <div id="title"><span>🇹🇭</span>曼谷吃喝玩乐</div>
+  <div id="placeCount">📍 <span id="countNum">0</span> 个地点</div>
+</div>
+
+<!-- ==================== LEGEND / FILTERS ==================== -->
+<div id="legend">
+  <button class="filter-btn active" data-cat="drink" title="喝酒">
+    🍺<span class="dot dot-drink"></span>
+  </button>
+  <button class="filter-btn active" data-cat="eat" title="吃">
+    🍽️<span class="dot dot-eat"></span>
+  </button>
+  <button class="filter-btn active" data-cat="rest" title="休息">
+    😴<span class="dot dot-rest"></span>
+  </button>
+  <button class="filter-btn active" data-cat="shop" title="逛街">
+    🛍️<span class="dot dot-shop"></span>
+  </button>
+  <button class="filter-btn active" data-cat="massage" title="按摩">
+    💆<span class="dot dot-massage"></span>
+  </button>
+  <button class="filter-btn active" data-cat="airport" title="机场">
+    🛫<span class="dot dot-airport"></span>
+  </button>
+  <button class="filter-btn active" data-cat="hotel" title="酒店">
+    🏨<span class="dot dot-hotel"></span>
+  </button>
+</div>
+
+<!-- ==================== BOTTOM SHEET ==================== -->
+<div id="sheet" class="hidden">
+  <div id="sheet-handle" title="点击展开/收起"></div>
+  <div id="sheet-header">
+    <h3 id="sheet-name"></h3>
+    <span id="sheet-category"></span>
+  </div>
+  <div id="sheet-note"></div>
+  <div id="sheet-votes">
+    <button class="vote-btn up" id="btnUp">
+      👍 <span>想去</span> <span class="count" id="upCount">0</span>
+    </button>
+    <button class="vote-btn down" id="btnDown">
+      👎 <span>不想去</span> <span class="count" id="downCount">0</span>
+    </button>
+  </div>
+  <div id="sheet-empty"></div>
+</div>
+
+<!-- ==================== ADD BUTTON ==================== -->
+<button id="addBtn" title="添加地点">+</button>
+
+<!-- ==================== ADD PLACE MODAL ==================== -->
+<div id="modalOverlay" class="hidden">
+  <div id="modal">
+    <h3>📍 添加新地点</h3>
+    <label>名称 *</label>
+    <input type="text" id="addName" placeholder="例如：Roast Coffee" maxlength="100">
+
+    <label>类别 *</label>
+    <select id="addCat">
+      <option value="drink">🍺 喝酒</option>
+      <option value="eat">🍽️ 吃</option>
+      <option value="rest">😴 休息</option>
+      <option value="shop">🛍️ 逛街</option>
+      <option value="massage">💆 按摩</option>
+      <option value="airport">🛫 机场</option>
+      <option value="hotel">🏨 酒店</option>
+    </select>
+
+    <label>备注</label>
+    <textarea id="addNote" placeholder="推荐菜、营业时间…" maxlength="200"></textarea>
+
+    <label>搜索地址（自动定位）</label>
+    <div style="display:flex;gap:8px;">
+      <input type="text" id="addAddr" placeholder="输入地址或地标…" style="flex:1;">
+      <button class="btn-secondary" id="searchAddrBtn" style="flex:none;padding:10px 14px;">🔍</button>
+    </div>
+
+    <div class="pick-map-btn" id="pickMapBtn">🗺️ 或直接在地图上点选位置</div>
+    <div id="coords-display">尚未设定位置</div>
+    <input type="hidden" id="addLat">
+    <input type="hidden" id="addLng">
+
+    <div class="btn-row">
+      <button class="btn-secondary" id="cancelAddBtn">取消</button>
+      <button class="btn-primary" id="submitAddBtn" disabled>添加</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TOAST ==================== -->
+<div id="toast"></div>
+
+<!-- ==================== PICK STATUS BAR ==================== -->
+<div id="pickStatus">👆 在地图上点击要标记的位置</div>
+
+<!-- ==================== Leaflet JS ==================== -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// 如果 cdnjs 加载失败，尝试 unpkg
+if (typeof L === 'undefined') {
+  document.write('<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>');
+}
+</script>
+
+<!-- ==================== Firebase (conditionally loaded) ==================== -->
+
+<!-- ==================== APP SCRIPT ==================== -->
+<script>
+(function() {
+'use strict';
+
+/* ==================== 🔧 FIREBASE CONFIG ==================== */
+/*
+   👇 把下面的 {} 替换成你的 Firebase 配置，就能开启实时同步 👇
+
+   如何获取（5 分钟）：
+   1. https://console.firebase.google.com → 创建项目
+   2. 项目设置 → 添加应用 → Web (</>)
+   3. 复制 firebaseConfig 对象，粘贴到下方 {} 里
+   4. 左侧 → 构建 → Realtime Database → 创建（新加坡，测试模式）
+   5. 左侧 → 构建 → Authentication → 匿名登录 → 启用
+
+   不配也能用，只是投票只存在本地（换设备看不到）。
+*/
+var FIREBASE_CONFIG = null; // 把 null 替换成 { apiKey:"...", ... }
+
+/* ==================== SEED DATA ==================== */
+var INITIAL_PLACES = [
+  // ── 休息 ──
+  { id:'rest_001', name:'912 Song Wat Rd', cat:'rest', note:'河边看日落，没有空调，查Google看营业时间', lat:13.7392, lng:100.4965 },
+  { id:'rest_002', name:'Emsphere 5F Sky Bar', cat:'rest', note:'高空观景，既是休息也是逛街地标', lat:13.7298, lng:100.5692 },
+
+  // ── 逛街 ──
+  { id:'shop_001', name:'Siriraj 医学博物馆', cat:'shop', note:'死亡博物馆，Siriraj Medical Museum', lat:13.7589, lng:100.4862 },
+  { id:'shop_002', name:'Treasure Factory Sukhumvit 39', cat:'shop', note:'曼谷古着店', lat:13.7362, lng:100.5735 },
+  { id:'shop_003', name:'Pantip Ngamwongwan 8F', cat:'shop', note:'周末开门，电子产品/二手市场', lat:13.8468, lng:100.5401 },
+  { id:'shop_004', name:'Platinum Fashion Mall', cat:'shop', note:'水门市场，批发衣服', lat:13.7492, lng:100.5395 },
+  { id:'shop_005', name:'December Mall', cat:'shop', note:'水门商圈，很多衣服', lat:13.7497, lng:100.5398 },
+  { id:'shop_006', name:'Iconsiam', cat:'shop', note:'湄南河畔超大商场，G层有室内水上市场', lat:13.7268, lng:100.5104 },
+  { id:'shop_007', name:'Central World', cat:'shop', note:'市中心最大商场之一', lat:13.7462, lng:100.5390 },
+  { id:'shop_008', name:'Big C Ratchadamri', cat:'shop', note:'大型超市，买伴手礼', lat:13.7471, lng:100.5402 },
+  { id:'shop_009', name:'Boyis Flagship Store', cat:'shop', note:'买手店园区，衣服很好逛', lat:13.7255, lng:100.5778 },
+  { id:'shop_010', name:'Khlong Bang Luang 水上市场', cat:'shop', note:'Bangkok Khlong Bang Luang', lat:13.7333, lng:100.4677 },
+  { id:'shop_011', name:'Ari 富人区', cat:'shop', note:'店很分散，打车定位到 HIDE 买手店开始逛', lat:13.7776, lng:100.5467 },
+
+  // ── 吃 ──
+  { id:'eat_001', name:'Som Som Seafood', cat:'eat', note:'咖喱蟹', lat:13.7375, lng:100.4950 },
+  { id:'eat_002', name:'Jeh O Chula', cat:'eat', note:'一大锅海鲜妈妈面', lat:13.7412, lng:100.5234 },
+  { id:'eat_003', name:'Mae Varee', cat:'eat', note:'芒果糯米饭', lat:13.7332, lng:100.5786 },
+  { id:'eat_004', name:'Poed Mark', cat:'eat', note:'打抛饭（煎蛋饭）', lat:13.7420, lng:100.5530 },
+  { id:'eat_005', name:'Krum', cat:'eat', note:'金波泰奶冰沙', lat:13.7350, lng:100.5780 },
+  { id:'eat_006', name:'Factory Coffee', cat:'eat', note:'曼谷冠军咖啡', lat:13.7383, lng:100.5541 },
+  { id:'eat_007', name:'Smoothies Drink Healthy', cat:'eat', note:'水果冰沙（Sukhumvit 区）', lat:13.7400, lng:100.5550 },
+  { id:'eat_008', name:'Chatramue 手标泰茶', cat:'eat', note:'经典泰奶（Siam 区）', lat:13.7465, lng:100.5350 },
+  { id:'eat_009', name:'After You', cat:'eat', note:'面包舒芙蕾雪冰（Siam 区）', lat:13.7445, lng:100.5345 },
+  { id:'eat_010', name:'Toritama', cat:'eat', note:'烧鸟，不用预定', lat:13.7212, lng:100.5850 },
+  { id:'eat_011', name:'Jidori', cat:'eat', note:'烧鸟，不用预定', lat:13.7220, lng:100.5840 },
+
+  // ── 喝酒 ──
+  { id:'drink_001', name:'Tichuca Bar', cat:'drink', note:'屋顶水母酒吧', lat:13.7260, lng:100.5770 },
+  { id:'drink_002', name:'Funky Town', cat:'drink', note:'', lat:13.7200, lng:100.5780 },
+  { id:'drink_003', name:'Bar Us', cat:'drink', note:'', lat:13.7220, lng:100.5600 },
+  { id:'drink_004', name:'Vesper', cat:'drink', note:'Silom 区知名鸡尾酒吧', lat:13.7250, lng:100.5460 },
+  { id:'drink_005', name:'Dusit Central Park The Norm 42F', cat:'drink', note:'', lat:13.7553, lng:100.5363 },
+  { id:'drink_006', name:'Ledu Kaan', cat:'drink', note:'56F The Empire, 1 S Sathon Rd, 无敌夜景', lat:13.7210, lng:100.5245 },
+
+  // ── 按摩 ──
+  { id:'massage_001', name:'Siam Heng Heng Thai Massage', cat:'massage', note:'泰式按摩', lat:13.7450, lng:100.5350 },
+
+  // ── 机场 ──
+  { id:'airport_001', name:'素万那普机场 (BKK)', cat:'airport', note:'Suvarnabhumi Airport，主要国际机场', lat:13.6900, lng:100.7501 },
+  { id:'airport_002', name:'廊曼机场 (DMK)', cat:'airport', note:'Don Mueang Airport，廉航/国内线为主', lat:13.9125, lng:100.6068 }
+];
+
+/* ==================== CATEGORY METADATA ==================== */
+var CAT_META = {
+  drink:   { emoji:'🍺', label:'喝酒', color:'#FF6B6B' },
+  eat:     { emoji:'🍽️', label:'吃',   color:'#FFA726' },
+  rest:    { emoji:'😴', label:'休息', color:'#26C6DA' },
+  shop:    { emoji:'🛍️', label:'逛街', color:'#AB47BC' },
+  massage: { emoji:'💆', label:'按摩', color:'#66BB6A' },
+  airport: { emoji:'🛫', label:'机场', color:'#42A5F5' },
+  hotel:   { emoji:'🏨', label:'酒店', color:'#EC407A' }
+};
+
+/* ==================== GLOBAL STATE ==================== */
+var map;
+var markersLayer;
+var placesData = {};       // placeId → { name, cat, note, lat, lng }
+var votesData = {};        // placeId → { up:{deviceId:1}, down:{deviceId:1} }
+var selectedPlaceId = null;
+var activeFilters = { drink:true, eat:true, rest:true, shop:true, massage:true, airport:true, hotel:true };
+var pickingLocation = false;
+var tempPickedLat = null;
+var tempPickedLng = null;
+
+var DEVICE_ID = (function() {
+  var id = localStorage.getItem('bkk_did');
+  if (!id) { id = 'd_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); localStorage.setItem('bkk_did', id); }
+  return id;
+})();
+
+/* ==================== DOM REFS ==================== */
+var sheet = document.getElementById('sheet');
+var sheetName = document.getElementById('sheet-name');
+var sheetCat = document.getElementById('sheet-category');
+var sheetNote = document.getElementById('sheet-note');
+var sheetEmpty = document.getElementById('sheet-empty');
+var btnUp = document.getElementById('btnUp');
+var btnDown = document.getElementById('btnDown');
+var upCount = document.getElementById('upCount');
+var downCount = document.getElementById('downCount');
+var modalOverlay = document.getElementById('modalOverlay');
+var addName = document.getElementById('addName');
+var addCat = document.getElementById('addCat');
+var addNote = document.getElementById('addNote');
+var addAddr = document.getElementById('addAddr');
+var addLat = document.getElementById('addLat');
+var addLng = document.getElementById('addLng');
+var coordsDisplay = document.getElementById('coords-display');
+var submitAddBtn = document.getElementById('submitAddBtn');
+var toast = document.getElementById('toast');
+var pickStatus = document.getElementById('pickStatus');
+var pickMapBtn = document.getElementById('pickMapBtn');
+var countNum = document.getElementById('countNum');
+
+/* ==================== UTILS ==================== */
+function escHTML(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+/* ==================== MAP INIT ==================== */
+function initMap() {
+  // 隐藏加载提示
+  var statusEl = document.getElementById('mapStatus');
+  if (statusEl) statusEl.style.display = 'none';
+
+  // 检查 Leaflet 是否加载
+  if (typeof L === 'undefined') {
+    if (statusEl) statusEl.innerHTML = '❌ 地图库加载失败<br><small>请检查网络连接，或尝试刷新</small>';
+    return;
+  }
+
+  map = L.map('map', {
+    center: [13.745, 100.545],
+    zoom: 12,
+    minZoom: 9,
+    maxZoom: 18,
+    zoomControl: true
+  });
+
+  // 主瓦片：OpenStreetMap（最稳定）
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OSM',
+    maxZoom: 19
+  }).addTo(map);
+
+  markersLayer = L.layerGroup().addTo(map);
+
+  // Map click for picking location
+  map.on('click', function(e) {
+    if (pickingLocation) {
+      tempPickedLat = e.latlng.lat;
+      tempPickedLng = e.latlng.lng;
+      addLat.value = tempPickedLat.toFixed(6);
+      addLng.value = tempPickedLng.toFixed(6);
+      coordsDisplay.textContent = '✅ 已选定：' + tempPickedLat.toFixed(5) + ', ' + tempPickedLng.toFixed(5);
+      submitAddBtn.disabled = false;
+      stopPicking();
+
+      var tmp = L.circleMarker([tempPickedLat, tempPickedLng], {
+        radius: 10, color: '#66BB6A', fillColor: '#66BB6A', fillOpacity: 0.4, weight: 3
+      }).addTo(map);
+      setTimeout(function() { map.removeLayer(tmp); }, 3000);
+    }
+  });
+}
+
+/* ==================== MARKER MANAGEMENT ==================== */
+function createIcon(cat) {
+  var meta = CAT_META[cat] || CAT_META.eat;
+  return L.divIcon({
+    html: '<div style="background:' + meta.color + ';width:34px;height:34px;border-radius:50%;' +
+      'display:flex;align-items:center;justify-content:center;font-size:17px;' +
+      'border:3px solid rgba(255,255,255,0.9);box-shadow:0 2px 10px rgba(0,0,0,0.35);cursor:pointer;">' +
+      meta.emoji + '</div>',
+    className: '',
+    iconSize: [34, 34],
+    iconAnchor: [17, 17]
+  });
+}
+
+function quickPopupHTML(placeId, data) {
+  var v = getVoteCounts(placeId);
+  var meta = CAT_META[data.cat] || CAT_META.eat;
+  return '<div style="min-width:180px;max-width:260px;">' +
+    '<div style="font-weight:700;font-size:14px;margin-bottom:4px;">' + escHTML(data.name) + '</div>' +
+    '<span style="font-size:11px;background:' + meta.color + ';padding:2px 8px;border-radius:8px;color:#fff;">' + meta.emoji + ' ' + meta.label + '</span>' +
+    (data.note ? '<div style="font-size:12px;color:#aaa;margin-top:6px;">' + escHTML(data.note) + '</div>' : '') +
+    '<div style="margin-top:8px;font-size:12px;color:#ccc;">👍 ' + v.up + ' &nbsp; 👎 ' + v.down + '</div>' +
+    '<div style="font-size:10px;color:#666;margin-top:4px;">点击查看详情 & 投票</div>' +
+    '</div>';
+}
+
+function addMarker(placeId, data) {
+  placesData[placeId] = data;
+  if (!activeFilters[data.cat]) return;
+  var icon = createIcon(data.cat);
+  var marker = L.marker([data.lat, data.lng], { icon: icon })
+    .bindPopup(quickPopupHTML(placeId, data), { closeButton: true })
+    .on('click', function() { selectPlace(placeId); });
+  marker._placeId = placeId;
+  marker._cat = data.cat;
+  markersLayer.addLayer(marker);
+  updateCount();
+}
+
+function renderAllMarkers() {
+  markersLayer.clearLayers();
+  Object.keys(placesData).forEach(function(id) {
+    var data = placesData[id];
+    if (activeFilters[data.cat]) {
+      var icon = createIcon(data.cat);
+      var marker = L.marker([data.lat, data.lng], { icon: icon })
+        .bindPopup(quickPopupHTML(id, data), { closeButton: true })
+        .on('click', function() { selectPlace(id); });
+      marker._placeId = id;
+      marker._cat = data.cat;
+      markersLayer.addLayer(marker);
+    }
+  });
+  updateCount();
+}
+
+function updateAllPopups() {
+  markersLayer.eachLayer(function(marker) {
+    var id = marker._placeId;
+    if (id && placesData[id]) {
+      marker.setPopupContent(quickPopupHTML(id, placesData[id]));
+    }
+  });
+}
+
+function updateCount() {
+  var total = 0;
+  markersLayer.eachLayer(function() { total++; });
+  countNum.textContent = total;
+}
+
+/* ==================== FILTERS ==================== */
+function toggleFilter(cat) {
+  activeFilters[cat] = !activeFilters[cat];
+  renderAllMarkers();
+
+  // Update button visual
+  var buttons = document.querySelectorAll('.filter-btn');
+  buttons.forEach(function(btn) {
+    var c = btn.dataset.cat;
+    if (c === cat) {
+      btn.classList.toggle('off', !activeFilters[cat]);
+      btn.classList.toggle('active', activeFilters[cat]);
+    }
+  });
+}
+
+/* ==================== PLACE SELECTION & VOTING ==================== */
+function selectPlace(placeId) {
+  selectedPlaceId = placeId;
+  var data = placesData[placeId];
+  if (!data) return;
+
+  sheetName.textContent = data.name;
+  var meta = CAT_META[data.cat] || CAT_META.eat;
+  sheetCat.textContent = meta.emoji + ' ' + meta.label;
+  sheetCat.style.background = meta.color;
+  sheetNote.textContent = data.note || '';
+  sheetEmpty.textContent = '';
+
+  sheet.classList.remove('hidden');
+  updateVoteButtons();
+}
+
+function getVoteCounts(placeId) {
+  var v = votesData[placeId];
+  if (!v) return { up: 0, down: 0, userVote: null };
+  var up = v.up ? Object.keys(v.up).length : 0;
+  var down = v.down ? Object.keys(v.down).length : 0;
+  var userVote = (v.up && v.up[DEVICE_ID]) ? 'up' : ((v.down && v.down[DEVICE_ID]) ? 'down' : null);
+  return { up: up, down: down, userVote: userVote };
+}
+
+function updateVoteButtons() {
+  if (!selectedPlaceId) return;
+  var v = getVoteCounts(selectedPlaceId);
+  upCount.textContent = v.up;
+  downCount.textContent = v.down;
+  btnUp.classList.toggle('voted', v.userVote === 'up');
+  btnDown.classList.toggle('voted', v.userVote === 'down');
+}
+
+function vote(placeId, direction) {
+  // Try Firebase first
+  if (window._firebaseDB) {
+    var voteRef = window._firebaseDB.ref('votes/' + placeId + '/' + DEVICE_ID);
+    voteRef.once('value').then(function(snap) {
+      if (snap.exists() && snap.val() === direction) {
+        voteRef.set(null);  // toggle off
+      } else {
+        voteRef.set(direction);
+      }
+    });
+    return;
+  }
+
+  // Local fallback
+  if (!votesData[placeId]) votesData[placeId] = { up: {}, down: {} };
+  var v = votesData[placeId];
+
+  // Remove from both first
+  delete v.up[DEVICE_ID];
+  delete v.down[DEVICE_ID];
+
+  // Check toggle
+  var current = localStorage.getItem('bkk_vote_' + placeId);
+  if (current !== direction) {
+    v[direction][DEVICE_ID] = 1;
+    localStorage.setItem('bkk_vote_' + placeId, direction);
+  } else {
+    localStorage.removeItem('bkk_vote_' + placeId);
+  }
+
+  updateVoteButtons();
+  updateAllPopups();
+}
+
+function loadLocalVotes() {
+  for (var i = 0; i < INITIAL_PLACES.length; i++) {
+    var id = INITIAL_PLACES[i].id;
+    var val = localStorage.getItem('bkk_vote_' + id);
+    if (val) {
+      if (!votesData[id]) votesData[id] = { up: {}, down: {} };
+      votesData[id][val][DEVICE_ID] = 1;
+    }
+  }
+}
+
+/* ==================== ADD PLACE ==================== */
+function showAddModal() {
+  addName.value = '';
+  addCat.value = 'eat';
+  addNote.value = '';
+  addAddr.value = '';
+  addLat.value = '';
+  addLng.value = '';
+  coordsDisplay.textContent = '尚未设定位置';
+  submitAddBtn.disabled = true;
+  modalOverlay.classList.remove('hidden');
+  setTimeout(function() { addName.focus(); }, 100);
+}
+
+function hideAddModal() {
+  modalOverlay.classList.add('hidden');
+  stopPicking();
+}
+
+function searchAddress() {
+  var query = addAddr.value.trim();
+  if (!query) return showToast('请先输入地址', true);
+
+  fetch('https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(query + ' Bangkok') + '&format=json&limit=1')
+    .then(function(r) { return r.json(); })
+    .then(function(results) {
+      if (results.length > 0) {
+        var lat = parseFloat(results[0].lat);
+        var lng = parseFloat(results[0].lon);
+        addLat.value = lat.toFixed(6);
+        addLng.value = lng.toFixed(6);
+        coordsDisplay.textContent = '✅ 找到：' + results[0].display_name.slice(0, 60) + '…';
+        submitAddBtn.disabled = false;
+        map.flyTo([lat, lng], 16, { duration: 1 });
+        L.circleMarker([lat, lng], { radius: 10, color: '#26C6DA', fillColor: '#26C6DA', fillOpacity: 0.3, weight: 3 })
+          .addTo(map).bindPopup('📍 ' + (addName.value || '新地点')).openPopup();
+      } else {
+        showToast('找不到该地址，试一下英文或更简短的关键词', true);
+      }
+    })
+    .catch(function() {
+      showToast('搜索失败，请检查网络', true);
+    });
+}
+
+function startPicking() {
+  pickingLocation = true;
+  map.getContainer().style.cursor = 'crosshair';
+  pickStatus.classList.add('show');
+  pickMapBtn.classList.add('active-pick');
+  pickMapBtn.textContent = '👆 在地图上点击…（再按一次取消）';
+}
+
+function stopPicking() {
+  pickingLocation = false;
+  map.getContainer().style.cursor = '';
+  pickStatus.classList.remove('show');
+  pickMapBtn.classList.remove('active-pick');
+  pickMapBtn.textContent = '🗺️ 或直接在地图上点选位置';
+}
+
+function submitAddPlace() {
+  var name = addName.value.trim();
+  var cat = addCat.value;
+  var note = addNote.value.trim();
+  var lat = parseFloat(addLat.value);
+  var lng = parseFloat(addLng.value);
+
+  if (!name) return showToast('请输入名称', true);
+  if (!lat || !lng || isNaN(lat) || isNaN(lng)) return showToast('请设定位置', true);
+
+  var newId = 'user_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6);
+
+  if (window._firebaseDB) {
+    window._firebaseDB.ref('places/' + newId).set({ name: name, cat: cat, note: note, lat: lat, lng: lng })
+      .then(function() {
+        showToast('✅ 地点已添加！');
+        hideAddModal();
+      })
+      .catch(function() {
+        showToast('添加失败，请检查网络', true);
+      });
+  } else {
+    // Local fallback
+    var data = { name: name, cat: cat, note: note, lat: lat, lng: lng };
+    addMarker(newId, data);
+    showToast('✅ 已添加（本地模式）');
+    hideAddModal();
+  }
+}
+
+/* ==================== TOAST ==================== */
+var toastTimer;
+function showToast(msg, isError) {
+  toast.textContent = msg;
+  toast.className = 'show' + (isError ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() { toast.className = ''; }, 2500);
+}
+
+/* ==================== EVENT BINDINGS ==================== */
+btnUp.addEventListener('click', function() { if (selectedPlaceId) vote(selectedPlaceId, 'up'); });
+btnDown.addEventListener('click', function() { if (selectedPlaceId) vote(selectedPlaceId, 'down'); });
+
+document.querySelectorAll('.filter-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() { toggleFilter(btn.dataset.cat); });
+});
+
+document.getElementById('addBtn').addEventListener('click', showAddModal);
+document.getElementById('cancelAddBtn').addEventListener('click', hideAddModal);
+document.getElementById('submitAddBtn').addEventListener('click', submitAddPlace);
+document.getElementById('searchAddrBtn').addEventListener('click', searchAddress);
+
+pickMapBtn.addEventListener('click', function() {
+  if (pickingLocation) { stopPicking(); } else { startPicking(); }
+});
+
+modalOverlay.addEventListener('click', function(e) {
+  if (e.target === modalOverlay) hideAddModal();
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    if (pickingLocation) stopPicking();
+    else if (!modalOverlay.classList.contains('hidden')) hideAddModal();
+  }
+});
+
+addAddr.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') searchAddress();
+});
+
+// Sheet handle
+document.getElementById('sheet-handle').addEventListener('click', function() {
+  if (selectedPlaceId) sheet.classList.toggle('hidden');
+});
+
+// Close sheet on map click (optional: uncomment to enable)
+// map.on('click', function() { sheet.classList.add('hidden'); selectedPlaceId = null; });
+
+/* ==================== FIREBASE LOADER ==================== */
+function loadFirebaseScripts() {
+  return new Promise(function(resolve, reject) {
+    if (!FIREBASE_CONFIG || !FIREBASE_CONFIG.apiKey) {
+      return resolve(false);
+    }
+
+    var scripts = [
+      'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js',
+      'https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js',
+      'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js'
+    ];
+    var loaded = 0;
+    var failed = false;
+
+    scripts.forEach(function(src) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.onload = function() {
+        loaded++;
+        if (loaded === scripts.length && !failed) resolve(true);
+      };
+      s.onerror = function() {
+        if (!failed) { failed = true; resolve(false); }
+      };
+      document.head.appendChild(s);
+    });
+  });
+}
+
+function initFirebase() {
+  try {
+    var app = firebase.initializeApp(FIREBASE_CONFIG);
+    var db = firebase.database();
+    var auth = firebase.auth();
+    window._firebaseDB = db;
+
+    // Anonymous sign-in
+    auth.signInAnonymously().catch(function() {});
+
+    // Seed initial data
+    db.ref('metadata/initialized').once('value').then(function(snap) {
+      if (!snap.exists()) {
+        console.log('🌱 正在写入初始数据…');
+        var updates = {};
+        INITIAL_PLACES.forEach(function(p) {
+          updates['places/' + p.id] = { name: p.name, cat: p.cat, note: p.note, lat: p.lat, lng: p.lng };
+        });
+        updates['metadata/initialized'] = true;
+        db.ref().update(updates);
+      }
+    });
+
+    // Listen to places
+    db.ref('places').on('child_added', function(snap) {
+      var data = snap.val();
+      if (!placesData[snap.key]) {
+        addMarker(snap.key, data);
+      }
+    });
+    db.ref('places').on('child_changed', function(snap) {
+      placesData[snap.key] = snap.val();
+      renderAllMarkers();
+      if (selectedPlaceId === snap.key) selectPlace(snap.key);
+    });
+    db.ref('places').on('child_removed', function(snap) {
+      delete placesData[snap.key];
+      renderAllMarkers();
+      if (selectedPlaceId === snap.key) {
+        selectedPlaceId = null;
+        sheet.classList.add('hidden');
+      }
+    });
+
+    // Listen to votes
+    db.ref('votes').on('value', function(snap) {
+      votesData = {};
+      if (snap.exists()) {
+        var all = snap.val();
+        Object.keys(all).forEach(function(pId) {
+          var entry = { up: {}, down: {} };
+          Object.keys(all[pId]).forEach(function(devId) {
+            var dir = all[pId][devId];
+            if (dir === 'up' || dir === 'down') entry[dir][devId] = 1;
+          });
+          votesData[pId] = entry;
+        });
+      }
+      updateVoteButtons();
+      updateAllPopups();
+    });
+
+    return true;
+  } catch(e) {
+    console.error('Firebase 初始化失败:', e);
+    return false;
+  }
+}
+
+/* ==================== BOOTSTRAP ==================== */
+function bootstrap() {
+  initMap();
+
+  // Load local votes first (so they show up immediately)
+  loadLocalVotes();
+
+  // Load seed data into local state
+  INITIAL_PLACES.forEach(function(p) {
+    addMarker(p.id, { name: p.name, cat: p.cat, note: p.note, lat: p.lat, lng: p.lng });
+  });
+
+  // Try to load Firebase
+  loadFirebaseScripts().then(function(ok) {
+    if (ok) {
+      var fbOk = initFirebase();
+      if (fbOk) {
+        console.log('✅ Firebase 已连接，实时同步中');
+      } else {
+        console.log('⚠️ Firebase 初始化失败，使用本地模式');
+      }
+    } else {
+      console.log('ℹ️ Firebase 未配置，使用本地模式。配置方法见 HTML 顶部注释。');
+    }
+  }).catch(function() {
+    console.log('ℹ️ Firebase 加载失败，使用本地模式');
+  });
+}
+
+// GO!
+try {
+  bootstrap();
+} catch(e) {
+  var statusEl = document.getElementById('mapStatus');
+  if (statusEl) statusEl.innerHTML = '❌ 加载失败: ' + e.message + '<br><small>请刷新重试</small>';
+  console.error('Bootstrap error:', e);
+}
+
+})();
+</script>
+
+<!-- PWA: 注册 Service Worker -->
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(function() {});
+}
+</script>
+
+</body>
+</html>
