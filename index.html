@@ -76,6 +76,13 @@ body {
   z-index: 1000;
   display: flex; flex-direction: column; gap: 6px;
 }
+.filter-all-btn {
+  width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.1); color: #fff; font-size: 18px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s; backdrop-filter: blur(10px);
+}
+.filter-all-btn:hover { transform: scale(1.08); background: rgba(255,255,255,0.2); }
 .filter-btn {
   width: 44px; height: 44px; border-radius: 50%; border: 2px solid transparent;
   background: rgba(22,33,62,0.9); color: #fff; font-size: 18px;
@@ -103,6 +110,7 @@ body {
     left: auto; right: 4px; top: auto; bottom: 100px;
     flex-direction: row; gap: 3px; flex-wrap: wrap; justify-content: flex-end;
   }
+  .filter-all-btn { width: 36px; height: 36px; font-size: 15px; }
   .filter-btn { width: 32px; height: 32px; font-size: 14px; }
 }
 
@@ -264,6 +272,9 @@ body {
 
 <!-- ==================== LEGEND / FILTERS ==================== -->
 <div id="legend">
+  <button class="filter-all-btn" id="filterAllBtn" title="全部显示">
+    🔄
+  </button>
   <button class="filter-btn active" data-cat="drink" title="喝酒">
     🍺<span class="dot dot-drink"></span>
   </button>
@@ -610,16 +621,7 @@ function updateCount() {
 function toggleFilter(cat) {
   activeFilters[cat] = !activeFilters[cat];
   renderAllMarkers();
-
-  // Update button visual
-  var buttons = document.querySelectorAll('.filter-btn');
-  buttons.forEach(function(btn) {
-    var c = btn.dataset.cat;
-    if (c === cat) {
-      btn.classList.toggle('off', !activeFilters[cat]);
-      btn.classList.toggle('active', activeFilters[cat]);
-    }
-  });
+  updateFilterButtons();
 }
 
 /* ==================== PLACE SELECTION & VOTING ==================== */
@@ -807,9 +809,49 @@ function showToast(msg, isError) {
 btnUp.addEventListener('click', function() { if (selectedPlaceId) vote(selectedPlaceId, 'up'); });
 btnDown.addEventListener('click', function() { if (selectedPlaceId) vote(selectedPlaceId, 'down'); });
 
-document.querySelectorAll('.filter-btn').forEach(function(btn) {
+/* ==================== FILTER BUTTONS ==================== */
+var filterButtons = document.querySelectorAll('.filter-btn');
+filterButtons.forEach(function(btn) {
   btn.addEventListener('click', function() { toggleFilter(btn.dataset.cat); });
+
+  // 长按 = 只看这一类
+  var pressTimer;
+  btn.addEventListener('touchstart', function(e) {
+    pressTimer = setTimeout(function() { showOnlyCategory(btn.dataset.cat); }, 500);
+  });
+  btn.addEventListener('touchend', function() { clearTimeout(pressTimer); });
+  btn.addEventListener('touchmove', function() { clearTimeout(pressTimer); });
+  // 桌面端右键
+  btn.addEventListener('contextmenu', function(e) {
+    e.preventDefault();
+    showOnlyCategory(btn.dataset.cat);
+  });
 });
+
+// 🔄 一键恢复全部
+document.getElementById('filterAllBtn').addEventListener('click', showAllCategories);
+
+function showOnlyCategory(cat) {
+  Object.keys(activeFilters).forEach(function(c) { activeFilters[c] = false; });
+  activeFilters[cat] = true;
+  renderAllMarkers();
+  updateFilterButtons();
+}
+
+function showAllCategories() {
+  Object.keys(activeFilters).forEach(function(c) { activeFilters[c] = true; });
+  renderAllMarkers();
+  updateFilterButtons();
+}
+
+function updateFilterButtons() {
+  filterButtons.forEach(function(btn) {
+    var c = btn.dataset.cat;
+    btn.classList.toggle('off', !activeFilters[c]);
+    btn.classList.toggle('active', activeFilters[c]);
+  });
+  updateCount();
+}
 
 document.getElementById('addBtn').addEventListener('click', showAddModal);
 document.getElementById('cancelAddBtn').addEventListener('click', hideAddModal);
