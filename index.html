@@ -156,6 +156,14 @@ body {
 .vote-btn.up.voted { background: rgba(102,187,106,0.25); border-color: #66BB6A; }
 .vote-btn.down.voted { background: rgba(255,107,107,0.25); border-color: #FF6B6B; }
 .vote-btn .count { font-size: 18px; font-weight: 700; }
+.delete-btn {
+  width: 100%; padding: 10px; border-radius: 12px;
+  border: 1px solid rgba(255,107,107,0.3); background: transparent;
+  color: rgba(255,107,107,0.6); font-size: 13px; cursor: pointer;
+  transition: all 0.15s; text-align: center;
+}
+.delete-btn:hover { background: rgba(255,107,107,0.1); color: #FF6B6B; }
+.delete-btn.confirming { background: rgba(255,107,107,0.2); color: #FF6B6B; border-color: #FF6B6B; }
 #sheet-empty {
   color: var(--muted); text-align: center; padding: 8px 20px 20px;
   font-size: 14px; line-height: 1.6;
@@ -219,6 +227,9 @@ body {
 .pick-map-btn.active-pick { background: rgba(102,187,106,0.2); border-color: #66BB6A; }
 
 /* ==================== TOAST ==================== */
+/* General hidden */
+.ghost { display: none !important; }
+
 #toast {
   position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
   z-index: 3000; background: #66BB6A; color: #fff; padding: 10px 20px;
@@ -267,7 +278,10 @@ body {
 <!-- ==================== TOP BAR ==================== -->
 <div id="topbar">
   <div id="title"><span>🇹🇭</span>曼谷吃喝玩乐</div>
-  <div id="placeCount">📍 <span id="countNum">0</span> 个地点</div>
+  <div id="placeCount" style="display:flex;align-items:center;gap:8px;">
+    <span id="nicknameDisplay" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" title="点击修改昵称">👤 设置昵称</span>
+    <span>📍 <span id="countNum">0</span></span>
+  </div>
 </div>
 
 <!-- ==================== LEGEND / FILTERS ==================== -->
@@ -314,6 +328,21 @@ body {
       👎 <span>不想去</span> <span class="count" id="downCount">0</span>
     </button>
   </div>
+  <div id="sheet-voters" style="padding:0 20px 12px;display:none;">
+    <div style="display:flex;gap:10px;">
+      <div style="flex:1;">
+        <div style="font-size:12px;color:#66BB6A;margin-bottom:4px;">👍 想去</div>
+        <div id="upVoters" style="font-size:12px;color:#aaa;line-height:1.6;"></div>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:12px;color:#FF6B6B;margin-bottom:4px;">👎 不想去</div>
+        <div id="downVoters" style="font-size:12px;color:#aaa;line-height:1.6;"></div>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;padding:0 20px 16px;">
+    <button class="delete-btn" id="btnDelete">🗑️ 删除此地点</button>
+  </div>
   <div id="sheet-empty"></div>
 </div>
 
@@ -355,6 +384,18 @@ body {
     <div class="btn-row">
       <button class="btn-secondary" id="cancelAddBtn">取消</button>
       <button class="btn-primary" id="submitAddBtn" disabled>添加</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== NICKNAME MODAL ==================== -->
+<div id="nicknameOverlay" class="ghost" style="position:fixed;inset:0;z-index:2500;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--panel);border-radius:20px;padding:24px;width:100%;max-width:360px;color:#fff;box-shadow:0 8px 40px rgba(0,0,0,0.5);">
+    <h3 style="margin-bottom:12px;">👤 设置你的昵称</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">朋友能看到你的投票，取个好认的名字</p>
+    <input type="text" id="nicknameInput" placeholder="你的名字…" maxlength="12" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:#fff;font-size:16px;outline:none;">
+    <div class="btn-row" style="display:flex;gap:10px;margin-top:16px;">
+      <button class="btn-primary" id="nicknameSaveBtn" style="flex:1;padding:14px;border-radius:12px;border:none;font-size:16px;font-weight:600;cursor:pointer;background:var(--accent);color:#fff;">进入地图 🗺️</button>
     </div>
   </div>
 </div>
@@ -438,6 +479,7 @@ var INITIAL_PLACES = [
 
   // ── 按摩 ──
   { id:'massage_001', name:'Siam Heng Heng Thai Massage', cat:'massage', note:'泰式按摩', lat:13.7450, lng:100.5350 },
+  { id:'massage_002', name:'四面佛', cat:'massage', note:'Erawan Shrine，Central World 旁边，祈福许愿', lat:13.7445, lng:100.5405 },
 
   // ── 机场 ──
   { id:'airport_001', name:'素万那普机场 (BKK)', cat:'airport', note:'Suvarnabhumi Airport，主要国际机场', lat:13.6900, lng:100.7501 },
@@ -471,6 +513,106 @@ var DEVICE_ID = (function() {
   if (!id) { id = 'd_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); localStorage.setItem('bkk_did', id); }
   return id;
 })();
+
+/* ==================== NICKNAME ==================== */
+var USER_NICKNAME = localStorage.getItem('bkk_nick') || '';
+var nicknameOverlay = document.getElementById('nicknameOverlay');
+var nicknameInput = document.getElementById('nicknameInput');
+var nicknameDisplay = document.getElementById('nicknameDisplay');
+
+function showNicknameModal() {
+  nicknameInput.value = USER_NICKNAME;
+  nicknameOverlay.classList.remove('ghost');
+  nicknameOverlay.style.display = 'flex';
+  setTimeout(function() { nicknameInput.focus(); }, 100);
+}
+
+function hideNicknameModal() {
+  nicknameOverlay.classList.add('ghost');
+  nicknameOverlay.style.display = '';
+}
+
+function saveNickname(name) {
+  name = (name || '').trim().slice(0, 12);
+  if (!name) {
+    // 生成随机昵称
+    var animals = ['猫','狗','兔','熊','鱼','鸟','鹿','象','虎','狮','羊','猴','蛙','虫','龙','凤'];
+    var colors = ['红','橙','黄','绿','蓝','紫','粉','白','黑','金','银'];
+    name = colors[Math.floor(Math.random()*colors.length)] + animals[Math.floor(Math.random()*animals.length)];
+  }
+  USER_NICKNAME = name;
+  localStorage.setItem('bkk_nick', name);
+  nicknamesCache[DEVICE_ID] = name;
+  updateNicknameDisplay();
+  // Sync to Firebase
+  if (window._firebaseDB) {
+    window._firebaseDB.ref('users/' + DEVICE_ID).set({ nickname: name });
+  }
+}
+
+function updateNicknameDisplay() {
+  if (USER_NICKNAME) {
+    nicknameDisplay.textContent = '👤 ' + USER_NICKNAME;
+    nicknameDisplay.style.background = '';
+    nicknameDisplay.style.color = '';
+    nicknameDisplay.style.fontWeight = '';
+  } else {
+    nicknameDisplay.textContent = '👆 点击设置昵称';
+    nicknameDisplay.style.background = '#FFA726';
+    nicknameDisplay.style.color = '#000';
+    nicknameDisplay.style.fontWeight = '700';
+    nicknameDisplay.style.padding = '4px 10px';
+    nicknameDisplay.style.borderRadius = '12px';
+    nicknameDisplay.style.textDecoration = 'none';
+  }
+}
+
+// Nickname modal events
+nicknameDisplay.addEventListener('click', function() { showNicknameModal(); });
+document.getElementById('nicknameSaveBtn').addEventListener('click', function() {
+  saveNickname(nicknameInput.value);
+  hideNicknameModal();
+});
+// 不允许关闭昵称弹窗（首次必须设置）
+if (USER_NICKNAME) {
+  nicknameOverlay.addEventListener('click', function(e) {
+    if (e.target === nicknameOverlay) hideNicknameModal();
+  });
+}
+nicknameInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    saveNickname(nicknameInput.value);
+    hideNicknameModal();
+  }
+});
+
+// Show nickname modal on first visit
+if (!USER_NICKNAME) {
+  showNicknameModal();
+}
+updateNicknameDisplay();
+
+/* ==================== NICKNAMES CACHE ==================== */
+var nicknamesCache = {}; // deviceId → nickname
+if (USER_NICKNAME) {
+  nicknamesCache[DEVICE_ID] = USER_NICKNAME;
+}
+
+function getVoterName(deviceId) {
+  // First check nicknames cache
+  if (nicknamesCache[deviceId]) return nicknamesCache[deviceId];
+  // Then check vote data - votes might have names embedded
+  for (var pid in votesData) {
+    var entry = votesData[pid];
+    if (entry.up && entry.up[deviceId] && typeof entry.up[deviceId] === 'string' && entry.up[deviceId].length < 20) {
+      return entry.up[deviceId];
+    }
+    if (entry.down && entry.down[deviceId] && typeof entry.down[deviceId] === 'string' && entry.down[deviceId].length < 20) {
+      return entry.down[deviceId];
+    }
+  }
+  return deviceId.slice(0, 6) + '…';
+}
 
 /* ==================== DOM REFS ==================== */
 var sheet = document.getElementById('sheet');
@@ -657,17 +799,46 @@ function updateVoteButtons() {
   downCount.textContent = v.down;
   btnUp.classList.toggle('voted', v.userVote === 'up');
   btnDown.classList.toggle('voted', v.userVote === 'down');
+
+  // Show voters
+  var vData = votesData[selectedPlaceId];
+  var upVoters = document.getElementById('upVoters');
+  var downVoters = document.getElementById('downVoters');
+  var votersPanel = document.getElementById('sheet-voters');
+
+  var upNames = [];
+  var downNames = [];
+  if (vData) {
+    if (vData.up) Object.keys(vData.up).forEach(function(did) {
+      var val = vData.up[did];
+      upNames.push((typeof val === 'string' && val.length < 20) ? val : getVoterName(did));
+    });
+    if (vData.down) Object.keys(vData.down).forEach(function(did) {
+      var val = vData.down[did];
+      downNames.push((typeof val === 'string' && val.length < 20) ? val : getVoterName(did));
+    });
+  }
+
+  if (upNames.length === 0 && downNames.length === 0) {
+    votersPanel.style.display = 'none';
+  } else {
+    votersPanel.style.display = 'block';
+    upVoters.textContent = upNames.length > 0 ? upNames.join('\n') : '—';
+    downVoters.textContent = downNames.length > 0 ? downNames.join('\n') : '—';
+  }
 }
 
 function vote(placeId, direction) {
+  var name = USER_NICKNAME || getVoterName(DEVICE_ID);
+
   // Try Firebase first
   if (window._firebaseDB) {
     var voteRef = window._firebaseDB.ref('votes/' + placeId + '/' + DEVICE_ID);
     voteRef.once('value').then(function(snap) {
-      if (snap.exists() && snap.val() === direction) {
+      if (snap.exists() && snap.val().dir === direction) {
         voteRef.set(null);  // toggle off
       } else {
-        voteRef.set(direction);
+        voteRef.set({ dir: direction, name: name });
       }
     });
     return;
@@ -677,14 +848,14 @@ function vote(placeId, direction) {
   if (!votesData[placeId]) votesData[placeId] = { up: {}, down: {} };
   var v = votesData[placeId];
 
-  // Remove from both first
+  // Remove existing vote
   delete v.up[DEVICE_ID];
   delete v.down[DEVICE_ID];
 
   // Check toggle
   var current = localStorage.getItem('bkk_vote_' + placeId);
   if (current !== direction) {
-    v[direction][DEVICE_ID] = 1;
+    v[direction][DEVICE_ID] = name;
     localStorage.setItem('bkk_vote_' + placeId, direction);
   } else {
     localStorage.removeItem('bkk_vote_' + placeId);
@@ -695,12 +866,13 @@ function vote(placeId, direction) {
 }
 
 function loadLocalVotes() {
+  var name = USER_NICKNAME || DEVICE_ID.slice(0, 6) + '…';
   for (var i = 0; i < INITIAL_PLACES.length; i++) {
     var id = INITIAL_PLACES[i].id;
     var val = localStorage.getItem('bkk_vote_' + id);
     if (val) {
       if (!votesData[id]) votesData[id] = { up: {}, down: {} };
-      votesData[id][val][DEVICE_ID] = 1;
+      votesData[id][val][DEVICE_ID] = name;
     }
   }
 }
@@ -808,6 +980,56 @@ function showToast(msg, isError) {
 /* ==================== EVENT BINDINGS ==================== */
 btnUp.addEventListener('click', function() { if (selectedPlaceId) vote(selectedPlaceId, 'up'); });
 btnDown.addEventListener('click', function() { if (selectedPlaceId) vote(selectedPlaceId, 'down'); });
+
+/* ==================== DELETE PLACE ==================== */
+var btnDelete = document.getElementById('btnDelete');
+var deleteConfirmTimer = null;
+
+btnDelete.addEventListener('click', function() {
+  if (!selectedPlaceId) return;
+
+  // 第一次点击 → 确认状态
+  if (!btnDelete.classList.contains('confirming')) {
+    btnDelete.classList.add('confirming');
+    btnDelete.textContent = '⚠️ 再次点击确认删除';
+    clearTimeout(deleteConfirmTimer);
+    deleteConfirmTimer = setTimeout(function() {
+      btnDelete.classList.remove('confirming');
+      btnDelete.textContent = '🗑️ 删除此地点';
+    }, 3000);
+    return;
+  }
+
+  // 第二次点击 → 执行删除
+  clearTimeout(deleteConfirmTimer);
+  var placeId = selectedPlaceId;
+
+  if (window._firebaseDB) {
+    // Firebase 删除
+    window._firebaseDB.ref('places/' + placeId).remove()
+      .then(function() {
+        showToast('🗑️ 已删除');
+        closeSheet();
+      })
+      .catch(function() {
+        showToast('删除失败', true);
+      });
+  } else {
+    // 本地删除
+    delete placesData[placeId];
+    localStorage.removeItem('bkk_vote_' + placeId);
+    renderAllMarkers();
+    showToast('🗑️ 已删除');
+    closeSheet();
+  }
+});
+
+function closeSheet() {
+  selectedPlaceId = null;
+  sheet.classList.add('hidden');
+  btnDelete.classList.remove('confirming');
+  btnDelete.textContent = '🗑️ 删除此地点';
+}
 
 /* ==================== FILTER BUTTONS ==================== */
 var filterButtons = document.querySelectorAll('.filter-btn');
@@ -967,8 +1189,13 @@ function initFirebase() {
         Object.keys(all).forEach(function(pId) {
           var entry = { up: {}, down: {} };
           Object.keys(all[pId]).forEach(function(devId) {
-            var dir = all[pId][devId];
-            if (dir === 'up' || dir === 'down') entry[dir][devId] = 1;
+            var v = all[pId][devId];
+            var dir = (typeof v === 'string') ? v : (v && v.dir);
+            var name = (typeof v === 'string') ? devId.slice(0,6)+'…' : (v && v.name || devId.slice(0,6)+'…');
+            if (dir === 'up' || dir === 'down') {
+              entry[dir][devId] = name;
+              nicknamesCache[devId] = name;
+            }
           });
           votesData[pId] = entry;
         });
@@ -976,6 +1203,23 @@ function initFirebase() {
       updateVoteButtons();
       updateAllPopups();
     });
+
+    // Listen to user nicknames
+    db.ref('users').on('value', function(snap) {
+      if (snap.exists()) {
+        var users = snap.val();
+        Object.keys(users).forEach(function(did) {
+          if (users[did].nickname) nicknamesCache[did] = users[did].nickname;
+        });
+      }
+      updateVoteButtons();
+      updateAllPopups();
+    });
+
+    // Push own nickname if set
+    if (USER_NICKNAME) {
+      db.ref('users/' + DEVICE_ID).set({ nickname: USER_NICKNAME });
+    }
 
     return true;
   } catch(e) {
